@@ -1,21 +1,21 @@
 @echo off
-title Jarvis v2 — AI Voice Assistant
+title Jarvis v2 - AI Voice Assistant
 color 0A
 cd /d "%~dp0"
 
 echo.
 echo   ===================================================
-echo     J A R V I S  v2 — AI Voice Assistant
+echo     J A R V I S  v2 - AI Voice Assistant
 echo   ===================================================
 echo.
 
-:: ─── CHECK IF ALREADY INSTALLED ─────────────────────────────────────────────
+:: --- CHECK IF ALREADY INSTALLED ---
 if exist ".venv\Scripts\activate.bat" goto :START
 
-:: ═══════════════════════════════════════════════════════════════════════════════
+:: ===================================================================
 :: FIRST TIME SETUP (only runs once)
-:: ═══════════════════════════════════════════════════════════════════════════════
-echo   First time setup — this takes 5-10 minutes...
+:: ===================================================================
+echo   First time setup - this takes 5-10 minutes...
 echo   Sit back and relax!
 echo.
 
@@ -28,27 +28,30 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo   [1/5] Python found ✓
+echo   [1/5] Python found [OK]
 
 :: Create venv
 echo   [2/5] Creating Python environment...
 python -m venv .venv
 call .venv\Scripts\activate.bat
+echo          Environment created [OK]
 
 :: Install packages
-echo   [3/5] Installing packages...
+echo   [3/5] Installing packages (please wait)...
 pip install --upgrade pip -q 2>nul
 pip install pyaudio -q 2>nul || (pip install pipwin -q 2>nul && pipwin install pyaudio 2>nul)
 pip install -r requirements.txt -q 2>nul
-echo          Packages installed ✓
+echo          Packages installed [OK]
 
 :: Ollama model
-echo   [4/5] Downloading AI model (2.3 GB)...
-ollama pull phi3 2>nul || echo          [WARNING] Ollama not found — install from https://ollama.com/download
+echo   [4/5] Downloading AI model (2.3 GB - please wait)...
+ollama pull phi3 2>nul
+echo          Model downloaded [OK]
 
 :: Wake word
 echo   [5/5] Setting up wake detection...
 python -c "import openwakeword; openwakeword.utils.download_models()" 2>nul
+echo          Wake detection ready [OK]
 
 :: Create desktop shortcut
 set SCRIPT_DIR=%~dp0
@@ -74,14 +77,14 @@ del "%TEMP%\_jss.vbs" 2>nul
 echo.
 echo   ===================================================
 echo     Setup complete!
-echo     Desktop shortcut created ✓
-echo     Auto-start with Windows enabled ✓
+echo     Desktop shortcut created [OK]
+echo     Auto-start with Windows enabled [OK]
 echo   ===================================================
 echo.
 
-:: ═══════════════════════════════════════════════════════════════════════════════
+:: ===================================================================
 :: START JARVIS (runs every time)
-:: ═══════════════════════════════════════════════════════════════════════════════
+:: ===================================================================
 :START
 
 call .venv\Scripts\activate.bat
@@ -106,7 +109,7 @@ echo.
 
 :: Run as background app
 start "" pythonw jarvis_app.pyw 2>nul || (
-    echo   [NOTE] Running in console mode...
+    echo   Running in console mode...
     python main.py
 )
 
