@@ -51,7 +51,7 @@ WHISPER_LANGUAGE: str = "en"
 
 # ── LLM (Ollama)
 OLLAMA_BASE_URL: str = "http://localhost:11434"
-OLLAMA_MODEL: str = "llama3"
+OLLAMA_MODEL: str = "phi3"
 OLLAMA_TIMEOUT: int = 60
 OLLAMA_MAX_TOKENS: int = 200
 
