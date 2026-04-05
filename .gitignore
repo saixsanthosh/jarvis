@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data & logs (user-specific, don't commit)
+data/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spotify cache
+.spotify_cache
+
+# Voice enrollment (contains biometric data)
+owner_voice.npy

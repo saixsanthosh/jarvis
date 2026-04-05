@@ -1,0 +1,41 @@
+# ══════════════════════════════════════════════════════════════════════
+# Jarvis v2 — Full Dependencies
+# ══════════════════════════════════════════════════════════════════════
+
+# ── Core audio
+pyaudio>=0.2.14
+numpy>=1.24.0
+
+# ── Wake detection
+openwakeword>=0.6.0
+onnxruntime>=1.16.0
+
+# ── Speech-to-text
+faster-whisper>=1.0.0
+
+# ── LLM
+requests>=2.31.0
+
+# ── Text-to-speech
+edge-tts>=6.1.0
+pygame>=2.5.0
+pyttsx3>=2.90
+
+# ── GUI
+pystray>=0.19.5
+Pillow>=10.0.0
+
+# ── System stats
+psutil>=5.9.0
+
+# ── Keyboard control (dictation, shortcuts)
+pynput>=1.7.6
+
+# ── WhatsApp messaging
+pywhatkit>=5.4
+
+# ── Optional (install if you want these features):
+# resemblyzer>=0.1.1       # Voice authentication
+# spotipy>=2.23.0          # Spotify control
+# pytesseract>=0.3.10      # OCR (also needs: sudo apt install tesseract-ocr)
+# piper-tts>=1.2.0         # Offline neural TTS
