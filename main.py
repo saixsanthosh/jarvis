@@ -99,16 +99,9 @@ _BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
 ║          J A R V I S  v2 — Local AI Assistant               ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Wake     →  "Hey Jarvis"  OR  double-clap                  ║
+║  Wake     →  "Wake up daddy's home" / "Yo Jarvis" / clap    ║
 ║  Sleep    →  "stop" / "sleep" / "goodbye"                   ║
-║  Stats    →  "how's the CPU" / "battery" / "disk space"     ║
-║  Weather  →  "what's the weather" / "weather tomorrow"      ║
-║  Timer    →  "remind me in 10 minutes to take a break"      ║
-║  Notes    →  "take a note: buy groceries" / "read notes"    ║
-║  Spotify  →  "play Bohemian Rhapsody on Spotify"            ║
-║  Home     →  "turn on the bedroom light"                    ║
-║  Memory   →  "what do you remember about me"                ║
-║  Help     →  "what can you do"                              ║
+║  Anything →  Just say it — Jarvis will figure it out!       ║
 ║  Quit     →  Ctrl-C                                          ║
 ╚══════════════════════════════════════════════════════════════╝
 """
@@ -122,8 +115,8 @@ class Jarvis:
 
         # ── Core audio / speech ───────────────────────────────────────────
         self.listener    = AudioListener()
-        self.wake        = WakeDetector()
         self.transcriber = Transcriber()
+        self.wake        = WakeDetector(transcribe_fn=self.transcriber.transcribe)
         self.speaker     = Speaker()
 
         # ── Intelligence ──────────────────────────────────────────────────

@@ -24,6 +24,25 @@ CLAP_ENERGY_THRESHOLD: int = 3_000
 CLAP_MIN_GAP: float = 0.15
 CLAP_MAX_GAP: float = 1.0
 
+# Custom wake phrases — say ANY of these to wake Jarvis
+# Uses Whisper to listen, so you can add whatever you want
+CUSTOM_WAKE_PHRASES: list = [
+    "wake up",
+    "daddy's home",
+    "wake up daddy's home",
+    "hey jarvis",
+    "yo jarvis",
+    "jarvis",
+    "hello jarvis",
+    "ok jarvis",
+    "hey buddy",
+    "listen up",
+]
+# How often to check for wake phrases (seconds of audio to buffer)
+WAKE_PHRASE_BUFFER_SECONDS: float = 3.0
+# Minimum audio energy to trigger phrase check (skip silence)
+WAKE_PHRASE_MIN_ENERGY: int = 500
+
 # ── Whisper / STT
 WHISPER_MODEL: str = "small"
 WHISPER_DEVICE: str = "cpu"

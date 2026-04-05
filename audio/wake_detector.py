@@ -1,24 +1,31 @@
 """
 audio/wake_detector.py — Listen passively for activation signals.
 
-Supported triggers
-──────────────────
-1. Wake word via openWakeWord  ("hey_jarvis" built-in model).
-2. Double-clap fallback         (always active, no model needed).
+Supported triggers (ALL run simultaneously)
+───────────────────────────────────────────
+1. Custom wake phrases  — "wake up daddy's home", "yo jarvis", etc.
+   Uses Whisper to transcribe short audio buffers and match phrases.
+   Add any phrase you want in config.py → CUSTOM_WAKE_PHRASES.
 
-Design notes
+2. Wake word via openWakeWord  ("hey_jarvis" built-in model).
+   Fast neural model, low CPU. Falls back gracefully if not installed.
+
+3. Double-clap fallback  (always active, no model needed).
+   Two sharp claps within 0.15–1.0 seconds.
+
+Architecture
 ────────────
-• openWakeWord is loaded lazily and gracefully degrades if missing.
-• The detector consumes a chunk-generator from AudioListener and blocks
-  until a trigger fires, then returns which kind fired.
-• No audio is buffered beyond what's needed for the sliding OWW window.
+The detector buffers audio chunks. Every WAKE_PHRASE_BUFFER_SECONDS it
+checks if there was enough speech energy to warrant a Whisper transcription.
+If yes, it transcribes and checks against CUSTOM_WAKE_PHRASES.
+Meanwhile, every chunk is also checked by openWakeWord and clap detection.
 """
 
 from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Generator, Literal
+from typing import Generator, Literal, Optional, Callable
 
 import numpy as np
 
@@ -26,21 +33,33 @@ from config import (
     OWW_MODEL_NAME, OWW_THRESHOLD,
     CLAP_ENERGY_THRESHOLD, CLAP_MIN_GAP, CLAP_MAX_GAP,
     SAMPLE_RATE, CHUNK_SIZE,
+    CUSTOM_WAKE_PHRASES, WAKE_PHRASE_BUFFER_SECONDS, WAKE_PHRASE_MIN_ENERGY,
 )
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-WakeTrigger = Literal["wake_word", "clap", "unknown"]
+WakeTrigger = Literal["wake_word", "clap", "custom_phrase", "unknown"]
+
+# Normalisation constant for int16 → float32
+_INT16_MAX = 32_768.0
 
 
 class WakeDetector:
     """Passive wake-event detector that blocks until triggered."""
 
-    def __init__(self) -> None:
+    def __init__(self, transcribe_fn: Optional[Callable] = None) -> None:
         self._oww = None
         self._oww_ok = False
+        self._transcribe = transcribe_fn
+        self._phrases = [p.lower().strip() for p in CUSTOM_WAKE_PHRASES if p.strip()]
         self._init_oww()
+
+        if self._phrases:
+            logger.info(
+                "Custom wake phrases enabled: %s",
+                ", ".join(f'"{p}"' for p in self._phrases[:5])
+            )
 
     # ── openWakeWord ──────────────────────────────────────────────────────────
 
@@ -49,7 +68,6 @@ class WakeDetector:
             from openwakeword.model import Model  # type: ignore
             import openwakeword  # type: ignore
 
-            # Download pre-trained models on first run
             openwakeword.utils.download_models()
 
             self._oww = Model(
@@ -60,14 +78,12 @@ class WakeDetector:
             logger.info("openWakeWord loaded — model: %s", OWW_MODEL_NAME)
         except ImportError:
             logger.warning(
-                "openWakeWord not installed. "
-                "Run: pip install openwakeword   (wake-word disabled, clap only)"
+                "openWakeWord not installed — using custom phrases + clap only."
             )
         except Exception as exc:
-            logger.warning("openWakeWord init failed (%s) — clap-only mode.", exc)
+            logger.warning("openWakeWord init failed (%s) — phrase + clap mode.", exc)
 
     def _oww_score(self, chunk: np.ndarray) -> float:
-        """Return the highest wake-word confidence score for this chunk."""
         if not self._oww_ok or self._oww is None:
             return 0.0
         try:
@@ -88,6 +104,34 @@ class WakeDetector:
         peak = int(np.abs(chunk).max())
         return peak > CLAP_ENERGY_THRESHOLD
 
+    # ── Custom phrase detection ───────────────────────────────────────────────
+
+    def _check_phrases(self, audio_buffer: np.ndarray) -> Optional[str]:
+        """Transcribe audio buffer and check for wake phrases."""
+        if not self._transcribe or not self._phrases:
+            return None
+
+        # Check if there's enough speech energy
+        energy = int(np.abs(audio_buffer).mean())
+        if energy < WAKE_PHRASE_MIN_ENERGY:
+            return None
+
+        try:
+            text = self._transcribe(audio_buffer).lower().strip()
+            if not text or len(text) < 2:
+                return None
+
+            # Check each wake phrase
+            for phrase in self._phrases:
+                if phrase in text:
+                    logger.info("Custom wake phrase matched: '%s' in '%s'", phrase, text)
+                    return phrase
+
+        except Exception as exc:
+            logger.debug("Phrase check error: %s", exc)
+
+        return None
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def listen_for_wake(
@@ -98,21 +142,38 @@ class WakeDetector:
         Block until a wake event fires.
 
         Consumes chunks from *chunk_stream* (yielded by AudioListener.stream_chunks).
-        Returns the trigger kind as a string.
+        Runs three detection methods simultaneously:
+          1. Custom phrase matching (Whisper-based)
+          2. openWakeWord neural model
+          3. Double-clap energy detection
         """
         clap_times: deque[float] = deque(maxlen=2)
 
-        hint = "say 'Hey Jarvis'" if self._oww_ok else "double-clap"
-        logger.info("👂 Waiting for wake signal (%s)…", hint)
+        # Audio buffer for phrase detection
+        phrase_buffer: list[np.ndarray] = []
+        chunks_per_buffer = int(SAMPLE_RATE / CHUNK_SIZE * WAKE_PHRASE_BUFFER_SECONDS)
+        chunk_count = 0
+        has_speech = False
+
+        # Build hint message
+        hints = []
+        if self._phrases:
+            hints.append(f'say "{self._phrases[0]}"')
+        elif self._oww_ok:
+            hints.append("say 'Hey Jarvis'")
+        hints.append("or double-clap")
+        logger.info("👂 Waiting for wake signal (%s)…", " ".join(hints))
 
         for chunk in chunk_stream:
-            # ── Wake word ──────────────────────────────────────────────────
+            chunk_count += 1
+
+            # ── 1. openWakeWord ────────────────────────────────────────────
             score = self._oww_score(chunk)
             if score >= OWW_THRESHOLD:
                 logger.info("Wake word detected (confidence=%.2f)", score)
                 return "wake_word"
 
-            # ── Double clap ────────────────────────────────────────────────
+            # ── 2. Double clap ─────────────────────────────────────────────
             if self._is_clap(chunk):
                 now = time.monotonic()
                 clap_times.append(now)
@@ -122,8 +183,29 @@ class WakeDetector:
                     if CLAP_MIN_GAP <= gap <= CLAP_MAX_GAP:
                         logger.info("Double-clap detected (gap=%.2fs)", gap)
                         return "clap"
-                    # Gap too long — treat second clap as the new first
                     if gap > CLAP_MAX_GAP:
                         clap_times.popleft()
 
-        return "unknown"  # stream exhausted (shouldn't normally happen)
+            # ── 3. Custom phrase detection ─────────────────────────────────
+            if self._phrases and self._transcribe:
+                phrase_buffer.append(chunk)
+
+                # Track if any chunk has speech-level energy
+                energy = int(np.abs(chunk).mean())
+                if energy >= WAKE_PHRASE_MIN_ENERGY:
+                    has_speech = True
+
+                # Every N chunks, check the buffer
+                if chunk_count >= chunks_per_buffer:
+                    if has_speech and phrase_buffer:
+                        audio = np.concatenate(phrase_buffer)
+                        matched = self._check_phrases(audio)
+                        if matched:
+                            return "custom_phrase"
+
+                    # Reset buffer
+                    phrase_buffer = []
+                    chunk_count = 0
+                    has_speech = False
+
+        return "unknown"
